@@ -18,63 +18,15 @@ RPIMONITOR_REPO=../RPi-Monitor
 DPKGSRC=$(pwd)/dpkg-src/
 RPIMONITOR_SRC=source
 VERSION=$(cat ../RPi-Monitor/VERSION)
-REVISION=$(cat REVISION)
 BRANCH=$(git branch | perl -ne '/^\* (.*)/ and print "$1"')
-
-# Shall we update changelog
-echo -e "\033[1mIs changelog need update for version $(cat ../RPi-Monitor/VERSION)?"
-echo -ne "yes/no ["
-if [[ $BRANCH == *"master"* ]]; then
-  echo -ne "yes"
-else
-  echo -ne "no"
-fi
-echo -ne "]:\033[0m"
-read continue
-
-if [[ $BRANCH == *"master"* ]] || [[ $continue == *"yes"* ]]; then
-  vi debian/changelog
-fi
+REVISION="monerobox-1"
 
 # Remove old package directory
 sudo rm -fr ${DPKGSRC}
 mkdir ${DPKGSRC}
 
-function updateRevision(){
-  echo
-  if [[ $BRANCH == *"master"* ]]; then
-    PREFIX=r
-  else
-    PREFIX=beta
-  fi
-  echo -e "\033[1mUpdate revision (REVISION=${PREFIX}${REVISION})?"
-  echo -ne "yes/no [no]:\033[0m"
-  read continue
-  if [[ $continue == *"yes"* ]]; then
-    ((REVISION++))
-    echo -n "Set revicion number [${REVISION}]: "
-    read choice
-    if [[ "x${choice}" != "x" ]]; then
-      REVISION=${choice}
-    fi
-    echo ${REVISION} > REVISION
-  fi
-}
-
-# Update RPi-Monitor source in ${RPIMONITOR_SRC}
-echo
-echo -e "\033[1mUpdating RPi-Monitor source\033[0m"
-rm -fr ${RPIMONITOR_SRC}
-if [[ $BRANCH == *"master"* ]]; then
-  git clone --no-hardlinks ${RPIMONITOR_REPO} ${RPIMONITOR_SRC}
-  updateRevision
-  REVISION="r${REVISION}"
-else
-  mkdir -p ${RPIMONITOR_SRC}
-  cp -a ${RPIMONITOR_REPO}/* ${RPIMONITOR_SRC}/
-  updateRevision
-  REVISION="beta${REVISION}"
-fi  
+mkdir -p ${RPIMONITOR_SRC}
+cp -a ${RPIMONITOR_REPO}/* ${RPIMONITOR_SRC}/
 
 echo
 echo -e "\033[1mConstructing debian package structure\033[0m"
@@ -116,27 +68,3 @@ dpkg -b ${DPKGSRC} packages/rpimonitor_${VERSION}-${REVISION}_all.deb > /dev/nul
 rm packages/rpimonitor_latest.deb
 cp packages/rpimonitor_${VERSION}-${REVISION}_all.deb packages/rpimonitor_latest.deb
 
-echo
-echo -e "\033[1mUpdate repository for ${VERSION}?"
-echo -ne "yes/no [yes]:\033[0m"
-read continue
-
-if [[ $BRANCH == *"master"* ]] || [[ $continue != *"no"* ]]; then
-  echo
-  echo -e "\033[1mUpdating repository for branch \033[31m\033[1m${BRANCH}\033[0m:\033[0m"
-  cd repo
-  rm *.deb Packages.gz
-  ln ../packages/rpimonitor_${VERSION}-${REVISION}_all.deb rpimonitor_${VERSION}-${REVISION}_all.deb
-  dpkg-scanpackages -h sha256 . /dev/null rpimonitor/ > Packages
-  gzip -k Packages
-
-  apt-ftparchive -c=apt-release.conf release . > Release
-  rm Release.gpg
-  gpg --armor --detach-sign --sign --output Release.gpg Release
-  cd ..
-fi
-
-echo
-echo -ne "\033[1mInstall RPi-Monitor ${VERSION} now? (Ctl+C to cancel)\033[0m"
-read continue
-sudo dpkg -i packages/rpimonitor_${VERSION}-${REVISION}_all.deb
